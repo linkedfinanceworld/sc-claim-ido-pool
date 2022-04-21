@@ -17,57 +17,56 @@ contract ClaimIDOPool is
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
-    // total claimed for each round
-    mapping(uint256 => uint256) public totalClaimed;
+    // the token address for IDO Claiming
+    address public tokenAddress;
 
-    // claim token address
-    address public claimToken;
+    // total claimed token for each round
+    mapping(uint256 => uint256) public claimedTokenAtRound;
 
-
-    // number of participant has been claimed
-    mapping(uint256 => uint256) public claimedCount;
+    // number of participants who have claimed for each round
+    mapping(uint256 => uint256) public claimedUsersAtRound;
 
     // allocation amount
     uint256 public roundNumber;
 
     // Is the pool initialize yet
-    bool public isInitilized; 
+    bool public isInitialized; 
 
-    // Mapping is claimed for an address at a specific round
+    // If user (address) has claimed at a specific round
     mapping(address => mapping(uint256 => bool)) public isClaimed;
 
-    // user address => pool name => bool.
-    mapping(address => mapping(uint256 => bool)) public whitelistAddress;
+    // If user (address) is whitelisted at a specific round
+    mapping(address => mapping(uint256 => bool)) public isAddressWhitelisted;
 
-    // user address => pool name => claimable Token
-    mapping(address => mapping(uint256 => uint256)) public claimAbleToken;
+    // The quota of token that each user (address) can claim at a specific round
+    mapping(address => mapping(uint256 => uint256)) public claimQuota;
 
-    // user address => pool name => claimable Token
+    // Time that the users can start to claim
     mapping(uint256 => uint256) public claimStartAt;
 
-    event EventClaimed(
+    event Claim(
         address indexed sender,
         uint256 round,
         uint256 amount,
         uint256 date
     );
-    event setToken(address indexed newToken);
-    event setClaimTime(uint256 newClaimTime, uint256 round);
-    event setClaimAmount(uint256[] newClaimAmount);
+    event NewTokenSet(address indexed newToken);
+    event ClaimTimeSet(uint256 newClaimTime, uint256 round);
+
 
     /**
-     * @notice set new config for the SC
+     * @notice set config for the SC
      * @dev only call by owner
-     * @param _token: claim token address
-     * @param _roundNumber: round number
+     * @param _token: the token address that will be used for claiming
+     * @param _roundNumber: the number of rounds for users to claim
      */
     function setConfig(
         address _token,
         uint256 _roundNumber
     ) external onlyOwner {
         require(
-            !isInitilized, 
-            "Pool is already initilized"
+            !isInitialized, 
+            "Pool is already initialized"
         );
 
         require(
@@ -75,79 +74,117 @@ contract ClaimIDOPool is
             "Invalid address"
         );
 
-        isInitilized = true;
-        claimToken = _token;
+        isInitialized = true;
+        tokenAddress = _token;
         roundNumber = _roundNumber;
     }
 
     /**
      * @notice set new token if needed
      * @dev only call by owner
+     * @param _token: the new token address that will be used for claiming
      */    
     function setNewToken(address _token) external onlyOwner {
         require(
             _token != address(0), 
             "Invalid address"
         );
-        claimToken = _token;
-        emit setToken(_token);
+        tokenAddress = _token;
+        emit NewTokenSet(_token);
     }
 
     /**
-     * @notice set new claim time each round if needed
+     * @notice set claim time each round
      * @dev only call by owner
+     * @param _claimTime: the time for user to start claiming
+     * @param _round: the round is used to set the time
      */    
-    function setNewClaimTime(
+    function setClaimTime(
         uint256 _claimTime,
         uint256 _round
     ) external onlyOwner {
         claimStartAt[_round] = _claimTime;
-        emit setClaimTime(_claimTime, _round);
+        emit ClaimTimeSet(_claimTime, _round);
     }
 
 
     /**
-     * @notice whitelist address to pool and update number of slot if existed. Only work for claiming in 4 rounds
+     * @notice whitelist a list of addresses for all rounds
      * @dev only call by owner
-     * @param _addresses: list whitelist address
-     * @param _round: number of round to claim token
+     * @param _addresses: list of addresses will be whitelisted
      */
-    function addWhitelistAddress(
-        address[] memory _addresses,
-        uint256 _round
+    function addWhitelistAddressesForAllRounds(
+        address[] memory _addresses
     ) external onlyOwner {
-        require(isInitilized, "Pool is not initilize");
-        for (uint256 index = 0; index < _addresses.length; index++) {
-            for (uint256 round = 1; round <= _round; round++) {
-                whitelistAddress[_addresses[index]][round] = true;
+        require(isInitialized, "Pool is not initialized");
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            for (uint256 round = 1; round <= roundNumber; round++) {
+                isAddressWhitelisted[_addresses[i]][round] = true;
             }
         }
     }
 
     /**
-     * @notice remove whitelist address
+     * @notice whitelist a list of addresses at a specifict round
      * @dev only call by owner
+     * @param _addresses: list of addresses will be whitelisted
+     * @param _round: number of rounds to claim token
      */
-    function removeWhitelistAddress(
+    function addWhitelistAddressesForRound(
         address[] memory _addresses,
         uint256 _round
     ) external onlyOwner {
-        require(isInitilized, "Pool is not initilize");
-        for (uint256 index = 0; index < _addresses.length; index++) {
-            for (uint256 round = 1; round <= _round; round++) {
-                whitelistAddress[_addresses[index]][round] = false;
+        require(isInitialized, "Pool is not initialized");
+        require(_round <= roundNumber, "Invalid round input");
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            isAddressWhitelisted[_addresses[i]][_round] = true;
+        }
+    }
+
+
+    /**
+     * @notice unwhitelist a list of addresses
+     * @dev only call by owner
+     * @param _addresses: list of addresses will be unwhitelisted
+     */
+    function removeWhitelistAddresses(
+        address[] memory _addresses
+    ) external onlyOwner {
+        require(isInitialized, "Pool is not initialized");
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            for (uint256 round = 1; round <= roundNumber; round++) {
+                isAddressWhitelisted[_addresses[i]][round] = false;
             }
         }      
     }
 
+
     /**
-     * @notice update claimable amount of token for each address in each round
+     * @notice whitelist a list of addresses at a specifict round
      * @dev only call by owner
-     * @param _addresses: list whitelist address
-     * @param _amount: amount to claim for each address in a specific round
+     * @param _addresses: list of addresses will be whitelisted
+     * @param _round: number of rounds to claim token
+     */
+    function removeWhitelistAddressesForRound(
+        address[] memory _addresses,
+        uint256 _round
+    ) external onlyOwner {
+        require(isInitialized, "Pool is not initialized");
+        require(_round <= roundNumber, "Invalid round input");
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            isAddressWhitelisted[_addresses[i]][_round] = false;
+        }
+    }
+
+
+    /**
+     * @notice set quota for each user (address) to claim at a specific round
+     * @dev only call by owner
+     * @param _addresses: list of user addresses
+     * @param _amount: list of token amount for the user addresses to claim accordingly
      * @param _round: round number 
      */
-    function addClaimableToken(
+    function setClaimQuota(
         address[] memory _addresses,
         uint256[] memory _amount,
         uint256 _round
@@ -156,62 +193,58 @@ contract ClaimIDOPool is
             _addresses.length == _amount.length,
             "Length of addresses and allocation values are different"
         );
-        for (uint256 index = 0; index < _addresses.length; index++) {
-            claimAbleToken[_addresses[index]][_round] = _amount[index];
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            claimQuota[_addresses[i]][_round] = _amount[i];
         } 
     }
 
     /**
-     * @notice claim button for each round
+     * @notice claim the quota of token at a round
      * @dev call by external
      * @param _round: vesting round, i.e., 1, 2, 3, etc.
      */
     function claim(uint256 _round) external {
-        require(isInitilized, "Pool is not initilize");
-        uint256 index = _round;
+        require(isInitialized, "Pool is not initialized");
+
+        require( _round <= roundNumber, "Invalid round input");
+
+        uint256 quota = claimQuota[_msgSender()][_round];
+        uint256 poolBalance = IERC20(tokenAddress).balanceOf(address(this));
 
         require(
-            index <= roundNumber,
-            "Wrong claim round"
-        );
-
-        uint256 claimAble = claimAbleToken[_msgSender()][index];
-        uint256 thisBal = IERC20(claimToken).balanceOf(address(this));
-
-        require(
-            thisBal >= claimAble,
-            "Not enough balance in SC"
+            poolBalance >= quota,
+            "Insufficient balance in Pool for this claim"
         );
 
         require(
-            whitelistAddress[_msgSender()][index], 
-            "You are not whitelisted or have already claimed token"
+            isAddressWhitelisted[_msgSender()][_round], 
+            "You are not whitelisted or have already claimed token at this round"
         );
 
         require(
-            claimStartAt[index] > 0 && block.timestamp >= claimStartAt[index],
+            claimStartAt[_round] > 0 && block.timestamp >= claimStartAt[_round],
             'Claim time has not started yet'
         );
 
         // Setting for FE
-        isClaimed[_msgSender()][index] = true;
-        totalClaimed[index] += claimAble;
-        claimedCount[index] += 1;
+        isClaimed[_msgSender()][_round] = true;
+        claimedTokenAtRound[_round] += quota;
+        claimedUsersAtRound[_round] += 1;
 
-        // Transfer token from SC to user
-        IERC20(claimToken).safeTransfer(_msgSender(), claimAble);
-        
         // Remove from whitelist at n-th round
-        whitelistAddress[_msgSender()][index] = false;
+        isAddressWhitelisted[_msgSender()][_round] = false;
         
         // Remove from claimable Token list at n-th round
-        claimAbleToken[_msgSender()][index] = 0;
+        claimQuota[_msgSender()][_round] = 0;
 
+        // Transfer token from SC to user
+        IERC20(tokenAddress).safeTransfer(_msgSender(), quota);
+        
         // Claimed event
-        emit EventClaimed(
+        emit Claim(
             _msgSender(),
-            index,
-            claimAble,
+            _round,
+            quota,
             block.timestamp
         );
     }
@@ -221,7 +254,7 @@ contract ClaimIDOPool is
      * @dev Needs to be for emergency.
      */
     function emergencyWithdraw(uint256 _amount) external onlyOwner {
-        ERC20(claimToken).transfer(address(msg.sender), _amount);
+        ERC20(tokenAddress).transfer(address(msg.sender), _amount);
     }
 
 }

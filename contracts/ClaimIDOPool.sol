@@ -8,6 +8,8 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import "hardhat/console.sol";
+
 contract ClaimIDOPool is 
         Context,
         Ownable,
@@ -15,7 +17,6 @@ contract ClaimIDOPool is
 {
 
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
 
     // the token address for IDO Claiming
     address public tokenAddress;
@@ -119,6 +120,7 @@ contract ClaimIDOPool is
         require(isInitialized, "Pool is not initialized");
         for (uint256 i = 0; i < _addresses.length; i++) {
             for (uint256 round = 1; round <= roundNumber; round++) {
+                // TODO check if false, then set true
                 isAddressWhitelisted[_addresses[i]][round] = true;
             }
         }
@@ -147,7 +149,7 @@ contract ClaimIDOPool is
      * @dev only call by owner
      * @param _addresses: list of addresses will be unwhitelisted
      */
-    function removeWhitelistAddresses(
+    function removeWhitelistAddressesForAllRounds(
         address[] memory _addresses
     ) external onlyOwner {
         require(isInitialized, "Pool is not initialized");
@@ -223,7 +225,7 @@ contract ClaimIDOPool is
 
         require(
             claimStartAt[_round] > 0 && block.timestamp >= claimStartAt[_round],
-            'Claim time has not started yet'
+            'Claiming of this round not enabled yet'
         );
 
         // Setting for FE

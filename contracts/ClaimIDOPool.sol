@@ -120,8 +120,9 @@ contract ClaimIDOPool is
         require(isInitialized, "Pool is not initialized");
         for (uint256 i = 0; i < _addresses.length; i++) {
             for (uint256 round = 1; round <= roundNumber; round++) {
-                // TODO check if false, then set true
-                isAddressWhitelisted[_addresses[i]][round] = true;
+                if (!isAddressWhitelisted[_addresses[i]][round]) {
+                    isAddressWhitelisted[_addresses[i]][round] = true;    
+                }
             }
         }
     }
@@ -139,7 +140,9 @@ contract ClaimIDOPool is
         require(isInitialized, "Pool is not initialized");
         require(_round <= roundNumber, "Invalid round input");
         for (uint256 i = 0; i < _addresses.length; i++) {
-            isAddressWhitelisted[_addresses[i]][_round] = true;
+            if (!isAddressWhitelisted[_addresses[i]][_round]) {
+                isAddressWhitelisted[_addresses[i]][_round] = true;
+            }
         }
     }
 
@@ -155,7 +158,9 @@ contract ClaimIDOPool is
         require(isInitialized, "Pool is not initialized");
         for (uint256 i = 0; i < _addresses.length; i++) {
             for (uint256 round = 1; round <= roundNumber; round++) {
-                isAddressWhitelisted[_addresses[i]][round] = false;
+                if (isAddressWhitelisted[_addresses[i]][round]) {
+                    isAddressWhitelisted[_addresses[i]][round] = false;
+                }
             }
         }      
     }
@@ -174,7 +179,9 @@ contract ClaimIDOPool is
         require(isInitialized, "Pool is not initialized");
         require(_round <= roundNumber, "Invalid round input");
         for (uint256 i = 0; i < _addresses.length; i++) {
-            isAddressWhitelisted[_addresses[i]][_round] = false;
+            if (isAddressWhitelisted[_addresses[i]][_round]) {
+                isAddressWhitelisted[_addresses[i]][_round] = false;
+            }
         }
     }
 
@@ -233,10 +240,10 @@ contract ClaimIDOPool is
         claimedTokenAtRound[_round] += quota;
         claimedUsersAtRound[_round] += 1;
 
-        // Remove from whitelist at n-th round
+        // Remove from whitelist for this round
         isAddressWhitelisted[_msgSender()][_round] = false;
         
-        // Remove from claimable Token list at n-th round
+        // Quota is empty after claim
         claimQuota[_msgSender()][_round] = 0;
 
         // Transfer token from SC to user
